@@ -1,4 +1,5 @@
 import os
+import subprocess
 import unittest
 from tests.helpers import TempEnv, git
 
@@ -14,7 +15,6 @@ class TestHarness(unittest.TestCase):
     def test_can_clone_bare_remote(self):
         with TempEnv() as env:
             dest = os.path.join(env.root, "clone")
-            import subprocess
             subprocess.run(["git", "clone", env.remote_url, dest],
                            capture_output=True, text=True, check=True)
             self.assertTrue(os.path.isdir(os.path.join(dest, ".git")))
