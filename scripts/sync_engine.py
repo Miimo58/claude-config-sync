@@ -16,6 +16,7 @@ from lib import (config, gitio, manifest, resolve, settingsmerge,  # noqa: E402
 ENGINE_DIR = os.path.dirname(os.path.abspath(__file__))
 PLUGIN_ROOT = os.path.dirname(ENGINE_DIR)
 DEFAULT_MANIFEST_FILE = os.path.join(PLUGIN_ROOT, "manifest.default.json")
+DEFAULT_SYNC_DIR = os.path.expanduser("~/.claude-sync")
 
 
 def _is_settings_entry(entry: dict) -> bool:
@@ -204,12 +205,87 @@ def cmd_push(claude_dir: str, sync_dir: str) -> dict:
     return {"status": "pushed"}
 
 
+def _log(claude_dir: str, message: str) -> None:
+    log_dir = os.path.join(claude_dir, "backups", "sync")
+    os.makedirs(log_dir, exist_ok=True)
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%S")
+    with open(os.path.join(log_dir, "sync.log"), "a", encoding="utf-8") as fh:
+        fh.write(f"{stamp} {message}\n")
+
+
 def cmd_status(claude_dir: str, sync_dir: str) -> dict:
-    raise NotImplementedError
+    cfg = config.load_local_config(claude_dir)
+    status: dict = {
+        "configured": cfg is not None,
+        "remote_url": cfg["remote_url"] if cfg else None,
+        "sync_dir": sync_dir,
+        "pending": 0,
+        "branch": None,
+    }
+    if os.path.isdir(os.path.join(sync_dir, ".git")):
+        out = gitio._run(["status", "-sb"], cwd=sync_dir)
+        lines = out.splitlines()
+        if lines:
+            status["branch"] = lines[0]
+        status["pending"] = max(0, len(lines) - 1)
+    return status
+
+
+def _resolve_claude_dir(args: argparse.Namespace) -> str:
+    if args.claude_dir:
+        return args.claude_dir
+    return os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+
+
+def _resolve_sync_dir(args: argparse.Namespace, claude_dir: str) -> str:
+    cfg = config.load_local_config(claude_dir)
+    if cfg and cfg.get("sync_dir"):
+        return cfg["sync_dir"]
+    return args.sync_dir or DEFAULT_SYNC_DIR
 
 
 def main(argv: list[str] | None = None) -> int:
-    raise NotImplementedError
+    parser = argparse.ArgumentParser(prog="sync_engine")
+    parser.add_argument("command", choices=["setup", "pull", "push", "status"])
+    parser.add_argument("remote_url", nargs="?")
+    parser.add_argument("--claude-dir", default=None)
+    parser.add_argument("--sync-dir", default=None)
+    args = parser.parse_args(argv)
+
+    claude_dir = _resolve_claude_dir(args)
+    sync_dir = _resolve_sync_dir(args, claude_dir)
+
+    if args.command == "setup":
+        if not args.remote_url:
+            print("usage: sync_engine setup <git-remote-url>", file=sys.stderr)
+            return 2
+        cmd_setup(args.remote_url, claude_dir, sync_dir)
+        print(f"[sync] configured with remote {args.remote_url}")
+        return 0
+
+    if args.command == "status":
+        st = cmd_status(claude_dir, sync_dir)
+        print(json.dumps(st, indent=2))
+        return 0
+
+    # pull / push: never break a session.
+    cfg = config.load_local_config(claude_dir)
+    if cfg is None:
+        _log(claude_dir, f"{args.command}: skipped (sync not configured)")
+        return 0
+    try:
+        if args.command == "pull":
+            summary = cmd_pull(claude_dir, sync_dir)
+        else:
+            summary = cmd_push(claude_dir, sync_dir)
+        _log(claude_dir, f"{args.command}: {summary}")
+        if isinstance(summary, dict) and summary.get("status") == "blocked":
+            print("[sync] push BLOCKED: possible secret detected; not pushed. "
+                  "See backups/sync/sync.log")
+    except Exception as exc:  # noqa: BLE001
+        _log(claude_dir, f"{args.command}: ERROR {exc!r}")
+        print(f"[sync] {args.command} skipped ({exc})")
+    return 0
 
 
 if __name__ == "__main__":  # pragma: no cover
