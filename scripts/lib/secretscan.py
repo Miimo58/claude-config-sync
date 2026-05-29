@@ -1,7 +1,6 @@
 """Scan file contents for likely secrets before pushing."""
 import os
 import re
-from typing import Union
 
 _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("openai-style key", re.compile(r"sk-[A-Za-z0-9]{16,}")),
@@ -12,6 +11,8 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         r'"[^"]*(?:token|secret|password|apikey|api_key)[^"]*"\s*:\s*"[^"]{16,}"',
         re.IGNORECASE)),
 ]
+
+MAX_SCAN_BYTES = 1 * 1024 * 1024  # skip files larger than 1 MB
 
 
 def scan_text(text: str) -> list[str]:
@@ -25,6 +26,8 @@ def scan_text(text: str) -> list[str]:
 
 def scan_file(path: str) -> list[str]:
     try:
+        if os.path.getsize(path) > MAX_SCAN_BYTES:
+            return []
         with open(path, "r", errors="ignore", encoding="utf-8") as fh:
             return scan_text(fh.read())
     except OSError:

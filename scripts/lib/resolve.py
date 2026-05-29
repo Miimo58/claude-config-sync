@@ -3,7 +3,7 @@ import filecmp
 import os
 from typing import Iterator
 
-from scripts.lib.manifest import is_excluded
+from .manifest import is_excluded
 
 
 def files_equal(path_a: str, path_b: str) -> bool:

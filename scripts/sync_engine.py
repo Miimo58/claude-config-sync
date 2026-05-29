@@ -83,7 +83,11 @@ def cmd_setup(remote_url: str, claude_dir: str, sync_dir: str,
 
 def _apply_copy(claude_dir: str, sync_dir: str, rel: str, stamp: str) -> str:
     """Newest-wins copy for a single file. Returns 'repo'|'local'|'equal'|'new'."""
-    local_path = os.path.join(claude_dir, rel)
+    # Guard against path traversal: destination must stay inside claude_dir.
+    claude_root = os.path.realpath(claude_dir)
+    local_path = os.path.realpath(os.path.join(claude_dir, rel))
+    if not local_path.startswith(claude_root + os.sep):
+        return "local"  # silently skip traversal attempts
     repo_path = os.path.join(sync_dir, rel)
     local_exists = os.path.isfile(local_path)
     repo_exists = os.path.isfile(repo_path)
@@ -167,8 +171,8 @@ def cmd_pull(claude_dir: str, sync_dir: str, reconcile: bool = True) -> dict:
                     known = set(json.load(fh).get("extraKnownMarketplaces", {}) or {})
             if merged_settings:
                 plugins.reconcile(merged_settings, known)
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            _log(claude_dir, f"reconcile: WARNING {exc!r}")
     return summary
 
 
@@ -194,9 +198,12 @@ def cmd_push(claude_dir: str, sync_dir: str) -> dict:
 
     findings = secretscan.scan_paths(_staged_manifest_files(sync_dir, man))
     if findings:
-        # Discard staged changes so nothing leaks.
-        gitio._run(["checkout", "--", "."], cwd=sync_dir)
-        gitio._run(["clean", "-fd"], cwd=sync_dir)
+        # Discard staged changes so nothing leaks; best-effort — ignore errors.
+        try:
+            gitio._run(["checkout", "--", "."], cwd=sync_dir)
+            gitio._run(["clean", "-fd"], cwd=sync_dir)
+        except gitio.GitError:
+            pass
         return {"status": "blocked", "findings": findings}
 
     if not gitio.commit_all(sync_dir, "sync: push config update"):
