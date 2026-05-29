@@ -23,7 +23,8 @@ class TestEngineSetup(unittest.TestCase):
             subprocess.run(["git", "clone", env.remote_url, dest],
                            env=GIT_ENV, capture_output=True, text=True, check=True)
             self.assertTrue(os.path.isfile(os.path.join(dest, "manifest.json")))
-            self.assertEqual(open(os.path.join(dest, "CLAUDE.md"), encoding="utf-8").read(), "my instructions")
+            with open(os.path.join(dest, "CLAUDE.md"), encoding="utf-8") as fh:
+                self.assertEqual(fh.read(), "my instructions")
             self.assertTrue(os.path.isfile(os.path.join(dest, "agents", "a.md")))
 
     def test_setup_skips_excluded_files(self):
