@@ -6,7 +6,7 @@ from scripts.lib import resolve
 
 def _write(path: str, content: str) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as fh:
+    with open(path, "w", encoding="utf-8") as fh:
         fh.write(content)
 
 

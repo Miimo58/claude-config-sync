@@ -10,7 +10,7 @@ class TestBackup(unittest.TestCase):
             env.write("CLAUDE.md", "original")
             dest = backup.backup_file(env.claude_dir, "CLAUDE.md", "20260529-100000")
             self.assertTrue(os.path.isfile(dest))
-            with open(dest) as fh:
+            with open(dest, encoding="utf-8") as fh:
                 self.assertEqual(fh.read(), "original")
             self.assertIn(os.path.join("backups", "sync", "20260529-100000"), dest)
 
