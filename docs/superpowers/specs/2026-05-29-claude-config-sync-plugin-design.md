@@ -140,6 +140,26 @@ Global excludes (never synced, regardless of location): `.DS_Store`, `*.log`,
 > the precise invocation is a planning task. Reconciliation must degrade gracefully
 > (log + continue) if a command is unavailable.
 
+## 7a. Hook coexistence
+
+The plugin's two hooks (`SessionStart` → pull, `Stop` → push) are declared in the
+plugin's own `hooks/hooks.json` inside the plugin directory — **not** written into
+`~/.claude/settings.json` or `~/.claude/hooks/`. Claude Code **merges** plugin hooks
+with the user's settings.json hooks **additively** per event; it does not replace
+them. The user's existing SessionStart/Stop hooks (`session-start-bootstrap.js`,
+`cost-tracker.js`, `session-end.js`, `stop-format-typecheck.js`, etc.) continue to run
+exactly as before; the plugin's pull/push run alongside them.
+
+Because the plugin's hooks live in the plugin dir, they are **not** part of the synced
+payload — syncing `settings.json`/`hooks/` never duplicates or clobbers them. The
+plugin is installed per-machine (it appears in the `enabledPlugins` union, so it
+auto-installs everywhere). The engine treats the user's `hooks/` and `scripts/` as
+**read-only** payload — it copies them, never modifies them.
+
+**Ordering:** the push (`Stop`) must run *after* the user's other Stop hooks finish
+writing, so it captures their final state. Hook ordering/priority is a planning detail
+to confirm against Claude Code's hook execution semantics.
+
 ## 8. Secret-scan guard
 
 Before any push, scan staged file contents for common secret patterns:
