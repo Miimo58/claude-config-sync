@@ -171,8 +171,37 @@ def cmd_pull(claude_dir: str, sync_dir: str, reconcile: bool = True) -> dict:
     return summary
 
 
+def _staged_manifest_files(sync_dir: str, man: dict) -> list[str]:
+    """Absolute paths of all manifest files currently in the repo clone."""
+    excludes = man.get("global_excludes", [])
+    paths = []
+    for entry in man["entries"]:
+        for rel in resolve.iter_manifest_files(sync_dir, entry["path"], excludes):
+            paths.append(os.path.join(sync_dir, rel))
+    return paths
+
+
 def cmd_push(claude_dir: str, sync_dir: str) -> dict:
-    raise NotImplementedError
+    try:
+        gitio.pull(sync_dir)
+    except gitio.GitError:
+        pass  # offline / first push; proceed and let push report
+    man = manifest.load_manifest(sync_dir)
+
+    _copy_into_repo(claude_dir, sync_dir, man)
+    _write_repo_settings(claude_dir, sync_dir)
+
+    findings = secretscan.scan_paths(_staged_manifest_files(sync_dir, man))
+    if findings:
+        # Discard staged changes so nothing leaks.
+        gitio._run(["checkout", "--", "."], cwd=sync_dir)
+        gitio._run(["clean", "-fd"], cwd=sync_dir)
+        return {"status": "blocked", "findings": findings}
+
+    if not gitio.commit_all(sync_dir, "sync: push config update"):
+        return {"status": "nochange"}
+    gitio.push(sync_dir)
+    return {"status": "pushed"}
 
 
 def cmd_status(claude_dir: str, sync_dir: str) -> dict:
