@@ -1,9 +1,14 @@
 """Reconcile installed plugins/marketplaces against the merged desired state."""
 import json
+import re
 import subprocess
-from typing import Any, Callable, Optional, Set
+from typing import Any, Callable
 
 RunnerType = Callable[[list[str]], tuple[int, str, str]]
+
+# Allowlist: name@marketplace keys and repo slugs must not start with '-' or
+# contain shell-special characters that could smuggle flags into the CLI.
+_SAFE_VALUE_RE = re.compile(r"^[A-Za-z0-9_./@:+-]+$")
 
 
 def default_runner(args: list[str]) -> tuple[int, str, str]:
@@ -42,7 +47,10 @@ def reconcile(merged_settings: dict[str, Any], known_marketplaces: set[str],
         if not repo:
             actions.append(f"SKIP marketplace {name}: no repo in source")
             continue
-        rc, _, err = runner(["plugin", "marketplace", "add", repo])
+        if not _SAFE_VALUE_RE.match(repo):
+            actions.append(f"SKIP marketplace {name}: unsafe repo value {repo!r}")
+            continue
+        rc, _, err = runner(["plugin", "marketplace", "add", "--", repo])
         actions.append(f"marketplace add {repo}"
                        + ("" if rc == 0 else f" FAILED: {err.strip()}"))
 
@@ -51,7 +59,10 @@ def reconcile(merged_settings: dict[str, Any], known_marketplaces: set[str],
     for key in enabled:
         if key in installed:
             continue
-        rc, _, err = runner(["plugin", "install", key, "--scope", "user"])
+        if not _SAFE_VALUE_RE.match(key):
+            actions.append(f"SKIP install {key!r}: unsafe plugin key")
+            continue
+        rc, _, err = runner(["plugin", "install", "--scope", "user", "--", key])
         actions.append(f"install {key}"
                        + ("" if rc == 0 else f" FAILED: {err.strip()}"))
     return actions

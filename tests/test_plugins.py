@@ -27,7 +27,7 @@ class TestPlugins(unittest.TestCase):
         }
         actions = plugins.reconcile(merged, known_marketplaces=set(), runner=runner)
         installs = [c for c in runner.calls if c[:2] == ["plugin", "install"]]
-        self.assertEqual(installs, [["plugin", "install", "b@m2", "--scope", "user"]])
+        self.assertEqual(installs, [["plugin", "install", "--scope", "user", "--", "b@m2"]])
         self.assertTrue(any("install b@m2" in a for a in actions))
 
     def test_adds_missing_marketplaces(self):
@@ -40,7 +40,7 @@ class TestPlugins(unittest.TestCase):
         }
         actions = plugins.reconcile(merged, known_marketplaces={"m1"}, runner=runner)
         adds = [c for c in runner.calls if c[:3] == ["plugin", "marketplace", "add"]]
-        self.assertEqual(adds, [["plugin", "marketplace", "add", "owner/repo"]])
+        self.assertEqual(adds, [["plugin", "marketplace", "add", "--", "owner/repo"]])
 
     def test_runner_error_is_caught_and_recorded(self):
         class Boom:
