@@ -5,11 +5,13 @@ import json
 import os
 import shutil
 import sys
+import time
 
 # Allow running as `python3 scripts/sync_engine.py` and as an imported module.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from lib import config, gitio, manifest, resolve, settingsmerge  # noqa: E402
+from lib import (config, gitio, manifest, resolve, settingsmerge,  # noqa: E402
+                 backup, secretscan, plugins)
 
 ENGINE_DIR = os.path.dirname(os.path.abspath(__file__))
 PLUGIN_ROOT = os.path.dirname(ENGINE_DIR)
@@ -78,8 +80,95 @@ def cmd_setup(remote_url: str, claude_dir: str, sync_dir: str,
     return cmd_pull(claude_dir, sync_dir, reconcile=reconcile)
 
 
+def _apply_copy(claude_dir: str, sync_dir: str, rel: str, stamp: str) -> str:
+    """Newest-wins copy for a single file. Returns 'repo'|'local'|'equal'|'new'."""
+    local_path = os.path.join(claude_dir, rel)
+    repo_path = os.path.join(sync_dir, rel)
+    local_exists = os.path.isfile(local_path)
+    repo_exists = os.path.isfile(repo_path)
+    if not repo_exists:
+        return "local"
+    equal = resolve.files_equal(local_path, repo_path)
+    local_mtime = int(os.path.getmtime(local_path)) if local_exists else 0
+    repo_ctime = gitio.last_commit_time(sync_dir, rel) or 0
+    decision = resolve.newest_wins(local_exists, repo_exists, equal,
+                                   local_mtime, repo_ctime)
+    if decision == "repo":
+        if local_exists:
+            backup.backup_file(claude_dir, rel, stamp)
+        os.makedirs(os.path.dirname(local_path) or claude_dir, exist_ok=True)
+        shutil.copy2(repo_path, local_path)
+        return "new" if not local_exists else "repo"
+    return decision
+
+
+def _apply_settings_merge(claude_dir: str, sync_dir: str, rel: str,
+                           stamp: str) -> dict:
+    """Merge settings.json into local. Returns the merged dict."""
+    local_path = os.path.join(claude_dir, rel)
+    repo_path = os.path.join(sync_dir, rel)
+    local_exists = os.path.isfile(local_path)
+    repo_exists = os.path.isfile(repo_path)
+    if not local_exists and not repo_exists:
+        return {}
+    local: dict = {}
+    repo: dict = {}
+    if local_exists:
+        with open(local_path, encoding="utf-8") as fh:
+            local = json.load(fh)
+    if repo_exists:
+        with open(repo_path, encoding="utf-8") as fh:
+            repo = json.load(fh)
+    local_mtime = int(os.path.getmtime(local_path)) if local_exists else 0
+    repo_ctime = gitio.last_commit_time(sync_dir, rel) or 0
+    equal = resolve.files_equal(local_path, repo_path)
+    winner_raw = resolve.newest_wins(local_exists, repo_exists, equal,
+                                     local_mtime, repo_ctime)
+    winner = "local" if winner_raw in ("local", "equal") else "repo"
+    merged = settingsmerge.merge_settings(local, repo, winner)
+    if local_exists and merged == local:
+        return merged
+    if local_exists:
+        backup.backup_file(claude_dir, rel, stamp)
+    os.makedirs(os.path.dirname(local_path) or claude_dir, exist_ok=True)
+    with open(local_path, "w", encoding="utf-8") as fh:
+        json.dump(merged, fh, indent=2)
+    return merged
+
+
 def cmd_pull(claude_dir: str, sync_dir: str, reconcile: bool = True) -> dict:
-    raise NotImplementedError
+    gitio.pull(sync_dir)
+    man = manifest.load_manifest(sync_dir)
+    excludes = man.get("global_excludes", [])
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    summary: dict = {"updated": 0, "kept": 0, "merged_settings": False}
+    merged_settings: dict = {}
+
+    for entry in man["entries"]:
+        if entry.get("policy") == "merge" and entry["path"] == "settings.json":
+            merged_settings = _apply_settings_merge(
+                claude_dir, sync_dir, entry["path"], stamp)
+            summary["merged_settings"] = True
+            continue
+        for rel in resolve.iter_manifest_files(sync_dir, entry["path"], excludes):
+            decision = _apply_copy(claude_dir, sync_dir, rel, stamp)
+            if decision in ("repo", "new"):
+                summary["updated"] += 1
+            else:
+                summary["kept"] += 1
+
+    if reconcile:
+        try:
+            local_settings_path = os.path.join(claude_dir, "settings.json")
+            known: set = set()
+            if os.path.isfile(local_settings_path):
+                with open(local_settings_path, encoding="utf-8") as fh:
+                    known = set(json.load(fh).get("extraKnownMarketplaces", {}) or {})
+            if merged_settings:
+                plugins.reconcile(merged_settings, known)
+        except Exception:  # noqa: BLE001
+            pass
+    return summary
 
 
 def cmd_push(claude_dir: str, sync_dir: str) -> dict:
