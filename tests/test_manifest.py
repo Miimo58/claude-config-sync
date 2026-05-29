@@ -12,18 +12,32 @@ class TestManifest(unittest.TestCase):
         self.assertEqual(entries["CLAUDE.md"], "copy")
 
     def test_load_manifest_reads_file_when_present(self):
-        d = tempfile.mkdtemp()
-        data = {"version": 1, "entries": [{"path": "X.md", "policy": "copy"}],
-                "global_excludes": [".DS_Store"]}
-        with open(os.path.join(d, "manifest.json"), "w") as fh:
-            json.dump(data, fh)
-        loaded = manifest.load_manifest(d)
-        self.assertEqual(loaded["entries"][0]["path"], "X.md")
+        with tempfile.TemporaryDirectory() as d:
+            data = {"version": 1, "entries": [{"path": "X.md", "policy": "copy"}],
+                    "global_excludes": [".DS_Store"]}
+            with open(os.path.join(d, "manifest.json"), "w", encoding="utf-8") as fh:
+                json.dump(data, fh)
+            loaded = manifest.load_manifest(d)
+            self.assertEqual(loaded["entries"][0]["path"], "X.md")
 
     def test_load_manifest_falls_back_to_default(self):
-        d = tempfile.mkdtemp()  # no manifest.json
-        loaded = manifest.load_manifest(d)
-        self.assertEqual(loaded, manifest.DEFAULT_MANIFEST)
+        with tempfile.TemporaryDirectory() as d:
+            loaded = manifest.load_manifest(d)
+            self.assertEqual(loaded, manifest.DEFAULT_MANIFEST)
+
+    def test_load_manifest_default_is_a_copy(self):
+        with tempfile.TemporaryDirectory() as d:
+            loaded = manifest.load_manifest(d)
+            loaded["entries"].append({"path": "EXTRA.md", "policy": "copy"})
+            # Mutating the returned copy must not affect the module constant
+            self.assertNotEqual(loaded, manifest.DEFAULT_MANIFEST)
+
+    def test_load_manifest_raises_on_malformed_json(self):
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "manifest.json"), "w", encoding="utf-8") as fh:
+                fh.write("{not valid json")
+            with self.assertRaises(ValueError):
+                manifest.load_manifest(d)
 
     def test_is_excluded_matches_name_and_glob(self):
         excludes = [".DS_Store", "*.log", "cache"]
