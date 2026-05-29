@@ -29,8 +29,15 @@ def _run(args: list[str], cwd: Optional[str] = None,
     return proc.stdout
 
 
+def _validate_remote_url(remote_url: str) -> None:
+    """Reject values that could be interpreted as git flags."""
+    if remote_url.startswith("-"):
+        raise GitError(f"invalid remote URL: {remote_url!r}")
+
+
 def clone(remote_url: str, dest: str, timeout: int = DEFAULT_TIMEOUT) -> None:
-    _run(["clone", remote_url, dest], timeout=timeout)
+    _validate_remote_url(remote_url)
+    _run(["clone", "--", remote_url, dest], timeout=timeout)
 
 
 def is_empty_repo(repo_dir: str) -> bool:
