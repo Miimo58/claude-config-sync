@@ -1,6 +1,6 @@
 {
   "name": "claude-config-sync",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Sync a manifest-defined subset of ~/.claude config across machines via a private git repo.",
   "license": "MIT",
   "mcpServers": {},
