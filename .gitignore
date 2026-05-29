@@ -1,0 +1,11 @@
+node_modules/
+.DS_Store
+__pycache__/
+*.pyc
+
+docs/
+.env
+
+# Local Claude Code settings — may contain personal info (name, email in permissions)
+.claude/
+

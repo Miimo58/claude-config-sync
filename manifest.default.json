@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "entries": [
+    { "path": "settings.json", "policy": "merge" },
+    { "path": "CLAUDE.md", "policy": "copy" },
+    { "path": "AGENTS.md", "policy": "copy" },
+    { "path": "agents", "policy": "copy" },
+    { "path": "commands", "policy": "copy" },
+    { "path": "rules", "policy": "copy" },
+    { "path": "hooks", "policy": "copy" },
+    { "path": "scripts", "policy": "copy" },
+    { "path": "skills", "policy": "copy" },
+    { "path": "mcp-configs", "policy": "copy" }
+  ],
+  "global_excludes": [
+    ".DS_Store", "*.log", "sessions", "projects", "cache", "security",
+    "backups", "file-history", "session-data", "session-env", "ide"
+  ]
+}
