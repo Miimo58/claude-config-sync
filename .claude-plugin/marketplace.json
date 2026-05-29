@@ -1,0 +1,25 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "claude-config-sync",
+  "metadata": {
+    "description": "Sync a manifest-defined subset of ~/.claude config across machines via a private git repo."
+  },
+  "owner": {
+    "name": "alexiscazin",
+    "email": "blueshelldata@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "claude-config-sync",
+      "description": "Sync a manifest-defined subset of ~/.claude config across machines via a private git repo.",
+      "version": "0.1.0",
+      "author": {
+        "name": "alexiscazin",
+        "email": "blueshelldata@gmail.com"
+      },
+      "source": ".",
+      "category": "productivity",
+      "tags": ["sync", "config", "git", "dotfiles"]
+    }
+  ]
+}
