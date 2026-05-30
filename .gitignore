@@ -6,3 +6,6 @@ __pycache__/
 docs/
 .env
 
+# Local Claude Code settings — may contain personal info (name, email in permissions)
+.claude/
+
