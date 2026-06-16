@@ -42,6 +42,9 @@ def _copy_into_repo(claude_dir: str, sync_dir: str, man: dict) -> None:
 def _write_repo_settings(claude_dir: str, sync_dir: str) -> bool:
     """Write the canonical merged settings.json into the repo.
 
+    Plugin names are synced so every machine installs the same set, but
+    enabled/disabled state is local-only: all enabledPlugins values are
+    stored as False in the repo regardless of the local machine's choices.
     Returns True if the repo file was changed.
     """
     local_path = os.path.join(claude_dir, "settings.json")
@@ -55,10 +58,14 @@ def _write_repo_settings(claude_dir: str, sync_dir: str) -> bool:
         with open(repo_path, encoding="utf-8") as fh:
             repo = json.load(fh)
     merged = settingsmerge.merge_settings(local, repo, winner="local")
-    if os.path.isfile(repo_path) and merged == repo:
+    repo_payload = {**merged}
+    if "enabledPlugins" in repo_payload:
+        repo_payload["enabledPlugins"] = {k: False
+                                          for k in repo_payload["enabledPlugins"]}
+    if os.path.isfile(repo_path) and repo_payload == repo:
         return False
     with open(repo_path, "w", encoding="utf-8") as fh:
-        json.dump(merged, fh, indent=2)
+        json.dump(repo_payload, fh, indent=2)
     return True
 
 

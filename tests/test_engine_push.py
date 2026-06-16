@@ -44,3 +44,16 @@ class TestEnginePush(unittest.TestCase):
             self._setup_seeded(env)
             res = sync_engine.cmd_push(env.claude_dir, env.sync_dir)
             self.assertEqual(res["status"], "nochange")
+
+    def test_push_strips_enabled_plugins_values_from_repo(self):
+        """Repo settings.json must never carry True for enabledPlugins values."""
+        with TempEnv() as env:
+            self._setup_seeded(env)  # local has enabledPlugins: {"a@m": True}
+            dest = os.path.join(env.root, "verify_ep")
+            subprocess.run(["git", "clone", env.remote_url, dest],
+                           env=GIT_ENV, capture_output=True, text=True, check=True)
+            with open(os.path.join(dest, "settings.json"), encoding="utf-8") as fh:
+                repo_settings = json.load(fh)
+            ep = repo_settings.get("enabledPlugins", {})
+            self.assertIn("a@m", ep, "plugin name must be present in repo")
+            self.assertFalse(ep["a@m"], "repo must not store True for enabled state")
