@@ -63,6 +63,22 @@ class TwoMachines(unittest.TestCase):
         with open(os.path.join(self.b_claude, "CLAUDE.md"), encoding="utf-8") as fh:
             self.assertEqual(fh.read(), "A v2")
 
+    def test_enabled_state_stays_local(self):
+        """A's True enabledPlugins value must not auto-enable the plugin on B."""
+        self._write(self.a_claude, "CLAUDE.md", "A")
+        self._write(self.a_claude, "settings.json",
+                    json.dumps({"enabledPlugins": {"px@m": True}}))
+        sync_engine.cmd_setup(self.remote, self.a_claude, self.a_sync)
+
+        self._write(self.b_claude, "settings.json", json.dumps({}))
+        sync_engine.cmd_setup(self.remote, self.b_claude, self.b_sync, reconcile=False)
+
+        with open(os.path.join(self.b_claude, "settings.json"), encoding="utf-8") as fh:
+            b_settings = json.load(fh)
+        ep = b_settings.get("enabledPlugins", {})
+        self.assertIn("px@m", ep, "plugin name should reach B for installation")
+        self.assertFalse(ep["px@m"], "A's enabled=True must not propagate to B")
+
     def test_excluded_paths_never_sync(self):
         self._write(self.a_claude, "CLAUDE.md", "x")
         self._write(self.a_claude, "sessions/secret-session.json", "should not sync")
