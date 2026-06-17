@@ -42,10 +42,11 @@ def _copy_into_repo(claude_dir: str, sync_dir: str, man: dict) -> None:
 def _write_repo_settings(claude_dir: str, sync_dir: str) -> bool:
     """Write the canonical merged settings.json into the repo.
 
-    Plugin names are synced so every machine installs the same set, but
-    enabled/disabled state is local-only: all enabledPlugins values are
-    stored as False in the repo regardless of the local machine's choices.
-    Returns True if the repo file was changed.
+    Plugin names are synced so every machine can install the same set, but
+    enabled/disabled state is local-only: all enabledPlugins values are stored
+    as False in the repo regardless of this machine's choices, so one machine's
+    `True` never auto-enables a plugin elsewhere. Returns True if the repo file
+    was changed.
     """
     local_path = os.path.join(claude_dir, "settings.json")
     repo_path = os.path.join(sync_dir, "settings.json")
@@ -59,6 +60,8 @@ def _write_repo_settings(claude_dir: str, sync_dir: str) -> bool:
             repo = json.load(fh)
     merged = settingsmerge.merge_settings(local, repo, winner="local")
     repo_payload = {**merged}
+    # Publish plugin names but never their enabled state: store every value as
+    # False so a plugin lands installed-but-disabled on machines that pull it.
     if "enabledPlugins" in repo_payload:
         repo_payload["enabledPlugins"] = {k: False
                                           for k in repo_payload["enabledPlugins"]}
@@ -156,6 +159,21 @@ def cmd_pull(claude_dir: str, sync_dir: str, reconcile: bool = True) -> dict:
     summary: dict = {"updated": 0, "kept": 0, "merged_settings": False}
     merged_settings: dict = {}
 
+    # Snapshot what this machine already knows BEFORE the merge unions in the
+    # repo's marketplaces/plugins, so reconcile can tell genuinely new arrivals
+    # (install + disable) from plugins this machine already manages (leave alone).
+    known_marketplaces: set = set()
+    local_known_plugins: set = set()
+    local_settings_path = os.path.join(claude_dir, "settings.json")
+    if os.path.isfile(local_settings_path):
+        try:
+            with open(local_settings_path, encoding="utf-8") as fh:
+                _local = json.load(fh)
+            known_marketplaces = set(_local.get("extraKnownMarketplaces", {}) or {})
+            local_known_plugins = set(_local.get("enabledPlugins", {}) or {})
+        except (OSError, json.JSONDecodeError):
+            pass
+
     for entry in man["entries"]:
         if entry.get("policy") == "merge" and entry["path"] == "settings.json":
             merged_settings = _apply_settings_merge(
@@ -169,15 +187,12 @@ def cmd_pull(claude_dir: str, sync_dir: str, reconcile: bool = True) -> dict:
             else:
                 summary["kept"] += 1
 
-    if reconcile:
+    if reconcile and merged_settings:
         try:
-            local_settings_path = os.path.join(claude_dir, "settings.json")
-            known: set = set()
-            if os.path.isfile(local_settings_path):
-                with open(local_settings_path, encoding="utf-8") as fh:
-                    known = set(json.load(fh).get("extraKnownMarketplaces", {}) or {})
-            if merged_settings:
-                plugins.reconcile(merged_settings, known)
+            actions = plugins.reconcile(merged_settings, known_marketplaces,
+                                        local_known_plugins)
+            for action in actions:
+                _log(claude_dir, f"reconcile: {action}")
         except Exception as exc:  # noqa: BLE001
             _log(claude_dir, f"reconcile: WARNING {exc!r}")
     return summary

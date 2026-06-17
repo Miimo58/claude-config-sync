@@ -45,8 +45,8 @@ class TestEnginePush(unittest.TestCase):
             res = sync_engine.cmd_push(env.claude_dir, env.sync_dir)
             self.assertEqual(res["status"], "nochange")
 
-    def test_push_strips_enabled_plugins_values_from_repo(self):
-        """Repo settings.json must never carry True for enabledPlugins values."""
+    def test_push_publishes_plugin_names_but_not_enabled_state(self):
+        """Repo carries plugin names (so they propagate) but never True values."""
         with TempEnv() as env:
             self._setup_seeded(env)  # local has enabledPlugins: {"a@m": True}
             dest = os.path.join(env.root, "verify_ep")
@@ -55,5 +55,5 @@ class TestEnginePush(unittest.TestCase):
             with open(os.path.join(dest, "settings.json"), encoding="utf-8") as fh:
                 repo_settings = json.load(fh)
             ep = repo_settings.get("enabledPlugins", {})
-            self.assertIn("a@m", ep, "plugin name must be present in repo")
-            self.assertFalse(ep["a@m"], "repo must not store True for enabled state")
+            self.assertIn("a@m", ep, "plugin name must propagate via the repo")
+            self.assertFalse(ep["a@m"], "repo must not carry True (no auto-enable)")

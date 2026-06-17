@@ -19,8 +19,14 @@ session end.
 - Explicit allowlist of what syncs (manifest). Nothing else can leak.
 - Never lose data: every overwrite is backed up.
 - Never block or break a Claude Code session, even on network/git failure.
-- Plugins: every plugin enabled on *any* machine becomes *installed/available* on
-  *every* machine; per-machine enabled/disabled state is preserved.
+- Plugins: every plugin installed on *any* machine becomes *available/installed* on
+  *every* machine, **disabled by default**; each machine's per-plugin enabled/disabled
+  choice is preserved and persists across syncs.
+  > Clarified (2026-06-17): a plugin propagated from another machine must be written to
+  > `enabledPlugins` as an explicit `false` (an *absent* key falls back to the plugin's
+  > `defaultEnabled`, usually `true` = enabled) and installed-then-disabled by
+  > reconcile. Reconcile must never reinstall/re-enable a plugin a machine already
+  > manages, or a locally disabled plugin gets silently re-enabled. See §7.
 
 ### Non-Goals (v1)
 - Real-time / continuous sync (chosen model is session-boundary).
@@ -119,26 +125,34 @@ Global excludes (never synced, regardless of location): `.DS_Store`, `*.log`,
 `settings.json` is synced with a **key-aware merge**, not a raw copy:
 
 - **`enabledPlugins`** (object keyed by `plugin@marketplace` → bool):
-  - **Keys** = union of repo + local. This union is the set of plugins that should be
-    *installed/available* everywhere.
-  - **Values** (enabled true/false) = the **local machine's** value wins. A key new to
-    this machine defaults to **`false`** (installed but disabled — available, not
-    forced on).
+  - **Keys** = union of repo + local — the set of plugins that should be
+    *available* everywhere. Names propagate; one machine's install reaches all.
+  - **Values** = the **local machine's** value wins. A key new to this machine is
+    written as an explicit **`false`** (available but disabled). Writing `false`
+    explicitly is required: an *absent* key falls back to the plugin's
+    `defaultEnabled` (usually `true` = enabled).
+  - On **push**, all values are normalized to `false` in the repo so one machine's
+    `true` never auto-enables a plugin elsewhere.
 - **All other keys** in `settings.json` follow newest-wins (whole-object level using
   the file's commit time vs mtime, consistent with §6).
 - **`extraKnownMarketplaces`** syncs globally (newest-wins like normal keys), so
   marketplace sources are known everywhere.
 
-**Reconciliation (run on pull, after files applied):** compare desired vs actual:
-- For each marketplace in merged `extraKnownMarketplaces` not known locally → add it.
-- For each plugin key in merged `enabledPlugins` not installed locally → install it
-  (so it becomes available). Do **not** change enabled/disabled state.
+**Reconciliation (run on pull, after files applied):** compare desired vs actual,
+using the machine's **pre-pull** `enabledPlugins` keys as the "already managed here"
+signal (not `claude plugin list`, whose handling of disabled plugins is unreliable):
+- For each marketplace in merged `extraKnownMarketplaces` not known locally → add it
+  (`claude plugin marketplace add <repo>`).
+- For each plugin key **new to this machine** → `claude plugin install --scope user
+  <key>` then `claude plugin disable --scope user <key>` (install enables by default
+  and there is no install-disabled flag, so disable explicitly).
+- For a plugin this machine already manages → **do nothing**, so its local
+  enabled/disabled choice is never disturbed.
 
-> ⚠️ Open detail for planning: the exact non-interactive CLI/commands to (a) add a
-> marketplace and (b) install a plugin must be verified during planning (consult
-> `~/.claude/PLUGIN_SCHEMA_NOTES.md` and current plugin docs). The *intent* is fixed;
-> the precise invocation is a planning task. Reconciliation must degrade gracefully
-> (log + continue) if a command is unavailable.
+> Verified against Claude Code v2.1.x (2026-06-17): `enabledPlugins` semantics
+> (`true`/`false`/absent→`defaultEnabled`), `claude plugin install` enabling by
+> default with no install-disabled flag, and `claude plugin enable|disable --scope`.
+> Reconciliation degrades gracefully (log + continue) if a command fails.
 
 ## 7a. Hook coexistence
 
@@ -153,7 +167,8 @@ exactly as before; the plugin's pull/push run alongside them.
 Because the plugin's hooks live in the plugin dir, they are **not** part of the synced
 payload — syncing `settings.json`/`hooks/` never duplicates or clobbers them. The
 plugin is installed per-machine (it appears in the `enabledPlugins` union, so it
-auto-installs everywhere). The engine treats the user's `hooks/` and `scripts/` as
+auto-installs everywhere, disabled by default). The engine treats the user's `hooks/`
+and `scripts/` as
 **read-only** payload — it copies them, never modifies them.
 
 **Ordering:** the push (`Stop`) must run *after* the user's other Stop hooks finish
