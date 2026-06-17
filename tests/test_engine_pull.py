@@ -66,7 +66,7 @@ class TestEnginePull(unittest.TestCase):
             sync_engine.cmd_pull(env.claude_dir, env.sync_dir, reconcile=False)
             self.assertEqual(env.read("CLAUDE.md"), "local new")
 
-    def test_pull_merges_settings_keeps_plugins_local(self):
+    def test_pull_merges_settings_enabled_plugins(self):
         with TempEnv() as env:
             _seed_remote_with(env, {
                 "settings.json": json.dumps(
@@ -80,6 +80,6 @@ class TestEnginePull(unittest.TestCase):
             merged = json.loads(env.read("settings.json"))
             # Non-plugin keys follow newest-wins (repo is newer here)...
             self.assertEqual(merged["model"], "sonnet")
-            # ...but enabledPlugins stays exactly local: repo's plugin never leaks in.
-            self.assertEqual(merged["enabledPlugins"], {"y@m": True})
-            self.assertNotIn("x@m", merged["enabledPlugins"])
+            # ...the local plugin choice wins, the repo's name propagates disabled.
+            self.assertEqual(merged["enabledPlugins"]["y@m"], True)
+            self.assertEqual(merged["enabledPlugins"]["x@m"], False)

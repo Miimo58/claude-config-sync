@@ -45,9 +45,9 @@ class TwoMachines(unittest.TestCase):
             self.assertEqual(fh.read(), "A v1")
         with open(os.path.join(self.b_claude, "settings.json"), encoding="utf-8") as fh:
             b_settings = json.load(fh)
-        # Plugins are machine-local: B keeps its own and never receives A's.
-        self.assertEqual(b_settings["enabledPlugins"], {"b@m": True})
-        self.assertNotIn("a@m", b_settings["enabledPlugins"])
+        # B keeps its own enabled plugin; A's name propagates but lands disabled.
+        self.assertEqual(b_settings["enabledPlugins"]["b@m"], True)
+        self.assertEqual(b_settings["enabledPlugins"]["a@m"], False)
 
         # Back-date B's local CLAUDE.md so A's incoming commit will be strictly newer.
         b_claude_md = os.path.join(self.b_claude, "CLAUDE.md")
@@ -64,8 +64,8 @@ class TwoMachines(unittest.TestCase):
         with open(os.path.join(self.b_claude, "CLAUDE.md"), encoding="utf-8") as fh:
             self.assertEqual(fh.read(), "A v2")
 
-    def test_plugins_stay_local(self):
-        """A's plugins must not propagate to B at all (no name, no enabled state)."""
+    def test_plugin_name_propagates_to_B_disabled_by_default(self):
+        """A's plugin becomes available on B but explicitly disabled."""
         self._write(self.a_claude, "CLAUDE.md", "A")
         self._write(self.a_claude, "settings.json",
                     json.dumps({"enabledPlugins": {"px@m": True}}))
@@ -76,29 +76,42 @@ class TwoMachines(unittest.TestCase):
 
         with open(os.path.join(self.b_claude, "settings.json"), encoding="utf-8") as fh:
             b_settings = json.load(fh)
-        self.assertNotIn("px@m", b_settings.get("enabledPlugins", {}),
-                         "A's plugin must not reach B")
+        ep = b_settings.get("enabledPlugins", {})
+        self.assertIn("px@m", ep, "plugin name should reach B for availability")
+        self.assertFalse(ep["px@m"], "A's enabled=True must land disabled on B")
 
-    def test_local_uninstall_sticks_across_pull(self):
-        """A plugin removed locally must not reappear after a pull (state sticks)."""
-        # A seeds with a plugin enabled, then B sets up (no plugin received).
+    def test_local_disable_sticks_across_pull(self):
+        """A plugin disabled locally stays disabled after a pull (state sticks)."""
+        # A seeds with px@m enabled; the repo carries the name with value False.
         self._write(self.a_claude, "CLAUDE.md", "A")
         self._write(self.a_claude, "settings.json",
                     json.dumps({"enabledPlugins": {"px@m": True}}))
         sync_engine.cmd_setup(self.remote, self.a_claude, self.a_sync)
 
-        # B locally enables its own plugin, then removes it. A subsequent pull
-        # must not bring it back from the repo.
-        self._write(self.b_claude, "settings.json",
-                    json.dumps({"enabledPlugins": {"local@m": True}}))
+        # B receives px@m (disabled), then the user enables it locally.
+        self._write(self.b_claude, "settings.json", json.dumps({}))
         sync_engine.cmd_setup(self.remote, self.b_claude, self.b_sync, reconcile=False)
-        self._write(self.b_claude, "settings.json", json.dumps({"enabledPlugins": {}}))
-        sync_engine.cmd_pull(self.b_claude, self.b_sync, reconcile=False)
+        self._write(self.b_claude, "settings.json",
+                    json.dumps({"enabledPlugins": {"px@m": True}}))
 
+        # A subsequent pull must NOT reset B's choice back to disabled.
+        sync_engine.cmd_pull(self.b_claude, self.b_sync, reconcile=False)
         with open(os.path.join(self.b_claude, "settings.json"), encoding="utf-8") as fh:
             b_settings = json.load(fh)
-        self.assertEqual(b_settings.get("enabledPlugins", {}), {},
-                         "removed plugin must not be re-added by sync")
+        self.assertTrue(b_settings["enabledPlugins"]["px@m"],
+                        "B's local enable choice must survive the pull")
+
+    def test_local_enabled_state_sticks_for_seeding_machine(self):
+        """A keeps its own enabled plugin across pulls despite repo storing False."""
+        self._write(self.a_claude, "CLAUDE.md", "A")
+        self._write(self.a_claude, "settings.json",
+                    json.dumps({"enabledPlugins": {"px@m": True}}))
+        sync_engine.cmd_setup(self.remote, self.a_claude, self.a_sync)
+        sync_engine.cmd_pull(self.a_claude, self.a_sync, reconcile=False)
+        with open(os.path.join(self.a_claude, "settings.json"), encoding="utf-8") as fh:
+            a_settings = json.load(fh)
+        self.assertTrue(a_settings["enabledPlugins"]["px@m"],
+                        "repo's normalized False must not disable A's own plugin")
 
     def test_excluded_paths_never_sync(self):
         self._write(self.a_claude, "CLAUDE.md", "x")

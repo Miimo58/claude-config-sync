@@ -12,7 +12,7 @@
     {
       "name": "claude-config-sync",
       "description": "Sync a manifest-defined subset of ~/.claude config across machines via a private git repo.",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "author": {
         "name": "alexiscazin",
         "email": "blueshelldata@gmail.com"

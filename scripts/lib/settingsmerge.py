@@ -1,16 +1,17 @@
 """Key-aware merge for settings.json.
 
 Non-special keys follow the newest-wins `winner` ('local' or 'repo').
-`enabledPlugins` is **machine-local only**: it is never synced, so the merged
-result always preserves this machine's own value verbatim (neither the set of
-installed plugins nor their enabled/disabled state propagates between machines).
-`extraKnownMarketplaces` is unioned so marketplace sources known on any machine
-are available everywhere.
+`enabledPlugins` and `extraKnownMarketplaces` are unioned so every plugin or
+marketplace known on any machine becomes *available* everywhere. For
+`enabledPlugins` the **local machine's value always wins**, and a plugin new to
+this machine defaults to `False` (installed-but-disabled). This is what makes a
+plugin propagate as "available, disabled by default" while each machine's own
+enabled/disabled choice is preserved across syncs.
 """
 import copy
 from typing import Any
 
-UNION_KEYS = ("extraKnownMarketplaces",)
+UNION_KEYS = ("enabledPlugins", "extraKnownMarketplaces")
 
 
 def merge_settings(local: dict[str, Any], repo: dict[str, Any],
@@ -18,12 +19,15 @@ def merge_settings(local: dict[str, Any], repo: dict[str, Any],
     """Return the merged settings dict. `winner` is 'local' or 'repo'."""
     base = copy.deepcopy(local if winner == "local" else repo)
 
-    # enabledPlugins is local-only: the repo's value is ignored entirely and
-    # this machine's value is preserved exactly, so local plugin state sticks.
-    if "enabledPlugins" in local:
-        base["enabledPlugins"] = copy.deepcopy(local["enabledPlugins"])
-    else:
-        base.pop("enabledPlugins", None)
+    local_ep = local.get("enabledPlugins", {}) or {}
+    repo_ep = repo.get("enabledPlugins", {}) or {}
+    merged_ep: dict[str, bool] = {}
+    for key in set(local_ep) | set(repo_ep):
+        # Local value wins; a key new to this machine is written explicitly as
+        # False (disabled). Writing it explicitly matters: an *absent* key would
+        # fall back to the plugin's defaultEnabled (usually True = enabled).
+        merged_ep[key] = local_ep[key] if key in local_ep else False
+    base["enabledPlugins"] = merged_ep
 
     local_mk = local.get("extraKnownMarketplaces", {}) or {}
     repo_mk = repo.get("extraKnownMarketplaces", {}) or {}
