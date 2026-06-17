@@ -19,8 +19,12 @@ session end.
 - Explicit allowlist of what syncs (manifest). Nothing else can leak.
 - Never lose data: every overwrite is backed up.
 - Never block or break a Claude Code session, even on network/git failure.
-- Plugins: every plugin enabled on *any* machine becomes *installed/available* on
-  *every* machine; per-machine enabled/disabled state is preserved.
+- Plugins: machine-local. The set of installed plugins and their enabled/disabled
+  state is **not** synced; each machine manages its own plugins independently.
+  > Amended (2026-06-17): the original v1 design propagated plugin *names* so every
+  > machine auto-installed the same set. That caused plugins to be auto-installed
+  > everywhere and prevented local removals from sticking, so `enabledPlugins` is now
+  > local-only and never synced. See §7.
 
 ### Non-Goals (v1)
 - Real-time / continuous sync (chosen model is session-boundary).
@@ -119,11 +123,11 @@ Global excludes (never synced, regardless of location): `.DS_Store`, `*.log`,
 `settings.json` is synced with a **key-aware merge**, not a raw copy:
 
 - **`enabledPlugins`** (object keyed by `plugin@marketplace` → bool):
-  - **Keys** = union of repo + local. This union is the set of plugins that should be
-    *installed/available* everywhere.
-  - **Values** (enabled true/false) = the **local machine's** value wins. A key new to
-    this machine defaults to **`false`** (installed but disabled — available, not
-    forced on).
+  **machine-local only — never synced.** The merge always preserves this machine's
+  own `enabledPlugins` verbatim; the repo's copy is ignored, and the key is stripped
+  from the repo payload on push. This guarantees plugins are not propagated or
+  auto-installed across machines and that local plugin changes (including removals)
+  stick. *(Amended 2026-06-17; see §1 Goals.)*
 - **All other keys** in `settings.json` follow newest-wins (whole-object level using
   the file's commit time vs mtime, consistent with §6).
 - **`extraKnownMarketplaces`** syncs globally (newest-wins like normal keys), so
@@ -131,8 +135,7 @@ Global excludes (never synced, regardless of location): `.DS_Store`, `*.log`,
 
 **Reconciliation (run on pull, after files applied):** compare desired vs actual:
 - For each marketplace in merged `extraKnownMarketplaces` not known locally → add it.
-- For each plugin key in merged `enabledPlugins` not installed locally → install it
-  (so it becomes available). Do **not** change enabled/disabled state.
+- Plugins are **not** reconciled or auto-installed; plugin state is machine-local.
 
 > ⚠️ Open detail for planning: the exact non-interactive CLI/commands to (a) add a
 > marketplace and (b) install a plugin must be verified during planning (consult
@@ -152,8 +155,9 @@ exactly as before; the plugin's pull/push run alongside them.
 
 Because the plugin's hooks live in the plugin dir, they are **not** part of the synced
 payload — syncing `settings.json`/`hooks/` never duplicates or clobbers them. The
-plugin is installed per-machine (it appears in the `enabledPlugins` union, so it
-auto-installs everywhere). The engine treats the user's `hooks/` and `scripts/` as
+config-sync plugin is installed manually per-machine (see README setup); plugins are
+no longer auto-installed via `enabledPlugins`. The engine treats the user's `hooks/`
+and `scripts/` as
 **read-only** payload — it copies them, never modifies them.
 
 **Ordering:** the push (`Stop`) must run *after* the user's other Stop hooks finish

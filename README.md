@@ -19,11 +19,12 @@ Never synced: `sessions/`, `projects/`, `cache/`, `security/`, `backups/`,
 - **Stop** (session end) → `push`: copy your config into the repo, scan for secrets,
   commit and push.
 
-`settings.json` is merged, not overwritten: `enabledPlugins` and
-`extraKnownMarketplaces` are unioned so every plugin/marketplace known on any machine
-is **installed/available** everywhere, while each machine keeps its own
-**enabled/disabled** choices (a plugin arriving from another machine lands installed
-but disabled).
+`settings.json` is merged, not overwritten. `extraKnownMarketplaces` is unioned so
+marketplace sources known on any machine are available everywhere. `enabledPlugins`,
+however, is **machine-local and never synced**: the set of installed plugins and their
+enabled/disabled state stays entirely on each machine. Plugins are never propagated or
+auto-installed across machines, and removing a plugin locally sticks — it will not
+reappear on the next sync.
 
 ---
 
@@ -134,9 +135,10 @@ Newest-wins relies on file mtime vs git commit time. Across machines with signif
 **clock skew**, a rare simultaneous edit could be misjudged — but the overwritten
 version is always backed up and recoverable.
 
-## Plugin reconciliation
+## Marketplace reconciliation
 
 Requires the `claude` CLI on PATH. On pull, marketplaces in `extraKnownMarketplaces`
-are added (`claude plugin marketplace add <repo>`) and plugins in `enabledPlugins` are
-installed (`claude plugin install <plugin@marketplace> --scope user`) if missing.
+that are not yet known locally are added (`claude plugin marketplace add <repo>`).
+Plugins themselves are **not** reconciled or auto-installed — plugin state is
+machine-local, so each machine decides which plugins to install and enable.
 Reconciliation failures are logged and never crash the session.

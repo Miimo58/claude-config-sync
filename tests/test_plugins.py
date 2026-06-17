@@ -19,7 +19,8 @@ class FakeRunner:
 
 
 class TestPlugins(unittest.TestCase):
-    def test_installs_missing_plugins_only(self):
+    def test_never_installs_plugins(self):
+        """Plugins are machine-local: reconcile must not install any plugin."""
         runner = FakeRunner(installed=["a@m1"])
         merged = {
             "enabledPlugins": {"a@m1": True, "b@m2": False},
@@ -27,8 +28,8 @@ class TestPlugins(unittest.TestCase):
         }
         actions = plugins.reconcile(merged, known_marketplaces=set(), runner=runner)
         installs = [c for c in runner.calls if c[:2] == ["plugin", "install"]]
-        self.assertEqual(installs, [["plugin", "install", "--scope", "user", "--", "b@m2"]])
-        self.assertTrue(any("install b@m2" in a for a in actions))
+        self.assertEqual(installs, [])
+        self.assertFalse(any("install" in a for a in actions))
 
     def test_adds_missing_marketplaces(self):
         runner = FakeRunner(installed=[])
@@ -45,9 +46,12 @@ class TestPlugins(unittest.TestCase):
     def test_runner_error_is_caught_and_recorded(self):
         class Boom:
             def __call__(self, args: list[str]) -> tuple[int, str, str]:
-                if args[:3] == ["plugin", "list", "--json"]:
-                    return 0, "[]", ""
                 return 1, "", "boom"
-        merged = {"enabledPlugins": {"b@m2": True}, "extraKnownMarketplaces": {}}
+        merged = {
+            "enabledPlugins": {},
+            "extraKnownMarketplaces": {
+                "m2": {"source": {"source": "github", "repo": "owner/repo"}},
+            },
+        }
         actions = plugins.reconcile(merged, known_marketplaces=set(), runner=Boom())
         self.assertTrue(any("FAILED" in a for a in actions))

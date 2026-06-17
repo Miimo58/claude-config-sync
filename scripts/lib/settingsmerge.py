@@ -1,14 +1,16 @@
 """Key-aware merge for settings.json.
 
 Non-special keys follow the newest-wins `winner` ('local' or 'repo').
-`enabledPlugins` and `extraKnownMarketplaces` are unioned so that every plugin
-or marketplace known on any machine is available everywhere, while each machine
-keeps its own enabled/disabled choices.
+`enabledPlugins` is **machine-local only**: it is never synced, so the merged
+result always preserves this machine's own value verbatim (neither the set of
+installed plugins nor their enabled/disabled state propagates between machines).
+`extraKnownMarketplaces` is unioned so marketplace sources known on any machine
+are available everywhere.
 """
 import copy
 from typing import Any
 
-UNION_KEYS = ("enabledPlugins", "extraKnownMarketplaces")
+UNION_KEYS = ("extraKnownMarketplaces",)
 
 
 def merge_settings(local: dict[str, Any], repo: dict[str, Any],
@@ -16,13 +18,12 @@ def merge_settings(local: dict[str, Any], repo: dict[str, Any],
     """Return the merged settings dict. `winner` is 'local' or 'repo'."""
     base = copy.deepcopy(local if winner == "local" else repo)
 
-    local_ep = local.get("enabledPlugins", {}) or {}
-    repo_ep = repo.get("enabledPlugins", {}) or {}
-    merged_ep: dict[str, bool] = {}
-    for key in set(local_ep) | set(repo_ep):
-        # Local value wins; a key new to this machine defaults to disabled.
-        merged_ep[key] = local_ep[key] if key in local_ep else False
-    base["enabledPlugins"] = merged_ep
+    # enabledPlugins is local-only: the repo's value is ignored entirely and
+    # this machine's value is preserved exactly, so local plugin state sticks.
+    if "enabledPlugins" in local:
+        base["enabledPlugins"] = copy.deepcopy(local["enabledPlugins"])
+    else:
+        base.pop("enabledPlugins", None)
 
     local_mk = local.get("extraKnownMarketplaces", {}) or {}
     repo_mk = repo.get("extraKnownMarketplaces", {}) or {}

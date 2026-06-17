@@ -3,15 +3,20 @@ from scripts.lib import settingsmerge
 
 
 class TestSettingsMerge(unittest.TestCase):
-    def test_enabled_plugins_union_local_value_wins_new_keys_disabled(self):
+    def test_enabled_plugins_are_local_only_repo_ignored(self):
         local = {"enabledPlugins": {"a@m": True, "b@m": False}}
         repo = {"enabledPlugins": {"a@m": False, "c@m": True}}
-        merged = settingsmerge.merge_settings(local, repo, winner="local")
+        # Even when the repo is the newest-wins winner, enabledPlugins stays local.
+        merged = settingsmerge.merge_settings(local, repo, winner="repo")
         ep = merged["enabledPlugins"]
-        self.assertEqual(ep["a@m"], True)    # local value wins
-        self.assertEqual(ep["b@m"], False)   # local-only preserved
-        self.assertEqual(ep["c@m"], False)   # new from repo -> installed but disabled
-        self.assertEqual(set(ep), {"a@m", "b@m", "c@m"})  # union of keys
+        self.assertEqual(ep, {"a@m": True, "b@m": False})  # local preserved verbatim
+        self.assertNotIn("c@m", ep)                        # repo's plugin never added
+
+    def test_enabled_plugins_dropped_when_local_has_none(self):
+        local = {"model": "opus"}
+        repo = {"enabledPlugins": {"c@m": True}}
+        merged = settingsmerge.merge_settings(local, repo, winner="repo")
+        self.assertNotIn("enabledPlugins", merged)  # repo's value must not leak in
 
     def test_marketplaces_union_local_wins(self):
         local = {"extraKnownMarketplaces": {"m1": {"source": {"repo": "x/local"}}}}
@@ -30,5 +35,10 @@ class TestSettingsMerge(unittest.TestCase):
 
     def test_missing_special_keys_default_to_empty(self):
         merged = settingsmerge.merge_settings({}, {}, "local")
-        self.assertEqual(merged["enabledPlugins"], {})
+        self.assertNotIn("enabledPlugins", merged)  # local-only, absent when unset
         self.assertEqual(merged["extraKnownMarketplaces"], {})
+
+    def test_local_enabled_plugins_preserved_verbatim(self):
+        local = {"enabledPlugins": {"a@m": True}}
+        merged = settingsmerge.merge_settings(local, {}, "local")
+        self.assertEqual(merged["enabledPlugins"], {"a@m": True})
