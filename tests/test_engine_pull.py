@@ -78,6 +78,8 @@ class TestEnginePull(unittest.TestCase):
             os.utime(os.path.join(env.claude_dir, "settings.json"), (old, old))
             sync_engine.cmd_pull(env.claude_dir, env.sync_dir, reconcile=False)
             merged = json.loads(env.read("settings.json"))
+            # Non-plugin keys follow newest-wins (repo is newer here)...
             self.assertEqual(merged["model"], "sonnet")
+            # ...the local plugin choice wins, the repo's name propagates disabled.
             self.assertEqual(merged["enabledPlugins"]["y@m"], True)
             self.assertEqual(merged["enabledPlugins"]["x@m"], False)

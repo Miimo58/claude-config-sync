@@ -1,9 +1,12 @@
 """Key-aware merge for settings.json.
 
 Non-special keys follow the newest-wins `winner` ('local' or 'repo').
-`enabledPlugins` and `extraKnownMarketplaces` are unioned so that every plugin
-or marketplace known on any machine is available everywhere, while each machine
-keeps its own enabled/disabled choices.
+`enabledPlugins` and `extraKnownMarketplaces` are unioned so every plugin or
+marketplace known on any machine becomes *available* everywhere. For
+`enabledPlugins` the **local machine's value always wins**, and a plugin new to
+this machine defaults to `False` (installed-but-disabled). This is what makes a
+plugin propagate as "available, disabled by default" while each machine's own
+enabled/disabled choice is preserved across syncs.
 """
 import copy
 from typing import Any
@@ -20,7 +23,9 @@ def merge_settings(local: dict[str, Any], repo: dict[str, Any],
     repo_ep = repo.get("enabledPlugins", {}) or {}
     merged_ep: dict[str, bool] = {}
     for key in set(local_ep) | set(repo_ep):
-        # Local value wins; a key new to this machine defaults to disabled.
+        # Local value wins; a key new to this machine is written explicitly as
+        # False (disabled). Writing it explicitly matters: an *absent* key would
+        # fall back to the plugin's defaultEnabled (usually True = enabled).
         merged_ep[key] = local_ep[key] if key in local_ep else False
     base["enabledPlugins"] = merged_ep
 

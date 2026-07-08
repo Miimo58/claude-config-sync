@@ -21,9 +21,11 @@ Never synced: `sessions/`, `projects/`, `cache/`, `security/`, `backups/`,
 
 `settings.json` is merged, not overwritten: `enabledPlugins` and
 `extraKnownMarketplaces` are unioned so every plugin/marketplace known on any machine
-is **installed/available** everywhere, while each machine keeps its own
-**enabled/disabled** choices (a plugin arriving from another machine lands installed
-but disabled).
+becomes **available everywhere**. A plugin installed on one machine is installed on the
+others too, but **disabled by default** — and each machine's own enabled/disabled
+choice always wins and **persists across syncs** (disabling a plugin locally stays
+disabled; it is never silently re-enabled). One machine's `enabled = true` never
+propagates to force a plugin on elsewhere.
 
 ---
 
@@ -134,9 +136,19 @@ Newest-wins relies on file mtime vs git commit time. Across machines with signif
 **clock skew**, a rare simultaneous edit could be misjudged — but the overwritten
 version is always backed up and recoverable.
 
-## Plugin reconciliation
+## Plugin & marketplace reconciliation
 
-Requires the `claude` CLI on PATH. On pull, marketplaces in `extraKnownMarketplaces`
-are added (`claude plugin marketplace add <repo>`) and plugins in `enabledPlugins` are
-installed (`claude plugin install <plugin@marketplace> --scope user`) if missing.
-Reconciliation failures are logged and never crash the session.
+Requires the `claude` CLI on PATH. On pull:
+
+- Marketplaces in `extraKnownMarketplaces` not yet known locally are added
+  (`claude plugin marketplace add <repo>`).
+- A plugin name that is **new to this machine** (it arrived via the repo) is installed
+  and then disabled (`claude plugin install --scope user <key>` followed by
+  `claude plugin disable --scope user <key>`), so it lands **available but disabled by
+  default**.
+- Plugins this machine already manages are **left untouched**, so a local
+  enabled/disabled choice is never overridden.
+
+The install/skip decision uses this machine's pre-pull `enabledPlugins` keys, so it
+does not depend on `claude plugin list` reporting disabled plugins. Reconciliation
+failures are logged and never crash the session.
