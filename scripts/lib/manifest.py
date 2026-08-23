@@ -17,6 +17,7 @@ DEFAULT_MANIFEST: dict[str, Any] = {
         {"path": "hooks", "policy": "copy"},
         {"path": "scripts", "policy": "copy"},
         {"path": "skills", "policy": "copy"},
+        {"path": "output-styles", "policy": "copy"},
         {"path": "mcp-configs", "policy": "copy"},
     ],
     "global_excludes": [

@@ -9,3 +9,6 @@ docs/
 # Local Claude Code settings — may contain personal info (name, email in permissions)
 .claude/
 
+# Personal learning notes — not part of the published plugin
+RELEASE_WORKFLOW.md
+

@@ -7,7 +7,7 @@ a private git repository.
 
 Defined by `manifest.default.json` (seeded into the repo as `manifest.json`):
 `settings.json` (key-aware merge), `CLAUDE.md`, `AGENTS.md`, `agents/`, `commands/`,
-`rules/`, `hooks/`, `scripts/`, `skills/`, `mcp-configs/`.
+`rules/`, `hooks/`, `scripts/`, `skills/`, `output-styles/`, `mcp-configs/`.
 
 Never synced: `sessions/`, `projects/`, `cache/`, `security/`, `backups/`,
 `file-history/`, `session-data/`, `session-env/`, `ide/`, `*.log`, `.DS_Store`.
