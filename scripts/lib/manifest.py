@@ -11,6 +11,7 @@ DEFAULT_MANIFEST: dict[str, Any] = {
         {"path": "settings.json", "policy": "merge"},
         {"path": "CLAUDE.md", "policy": "copy"},
         {"path": "AGENTS.md", "policy": "copy"},
+        {"path": "statusline-command.sh", "policy": "copy"},
         {"path": "agents", "policy": "copy"},
         {"path": "commands", "policy": "copy"},
         {"path": "rules", "policy": "copy"},
