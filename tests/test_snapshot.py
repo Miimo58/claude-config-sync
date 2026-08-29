@@ -99,5 +99,44 @@ class Build(unittest.TestCase):
             self.assertNotIn("skills/x/notes.log", built)
 
 
+class PruneEmptyDirs(unittest.TestCase):
+    """Emptying a nested skill must leave no husk behind, at any depth."""
+
+    def test_removes_nested_husks_up_to_the_entry_root(self):
+        with TempEnv() as env:
+            env.write("skills/deep/scripts/helper.js", "x")
+            env.write("CLAUDE.md", "keep me")
+            os.remove(os.path.join(env.claude_dir, "skills/deep/scripts/helper.js"))
+
+            snapshot.prune_empty_dirs(env.claude_dir, MAN)
+
+            self.assertFalse(os.path.exists(
+                os.path.join(env.claude_dir, "skills/deep/scripts")))
+            self.assertFalse(os.path.exists(
+                os.path.join(env.claude_dir, "skills/deep")),
+                "a parent emptied by this same pass must go too")
+            self.assertFalse(os.path.exists(os.path.join(env.claude_dir, "skills")),
+                             "the entry root goes when nothing is left under it")
+
+    def test_keeps_directories_that_still_hold_files(self):
+        with TempEnv() as env:
+            env.write("skills/gone/SKILL.md", "x")
+            env.write("skills/staying/SKILL.md", "y")
+            os.remove(os.path.join(env.claude_dir, "skills/gone/SKILL.md"))
+
+            snapshot.prune_empty_dirs(env.claude_dir, MAN)
+
+            self.assertFalse(os.path.exists(os.path.join(env.claude_dir, "skills/gone")))
+            self.assertTrue(os.path.isfile(
+                os.path.join(env.claude_dir, "skills/staying/SKILL.md")))
+
+    def test_never_removes_the_base_directory(self):
+        with TempEnv() as env:
+            env.write("skills/gone/SKILL.md", "x")
+            os.remove(os.path.join(env.claude_dir, "skills/gone/SKILL.md"))
+            snapshot.prune_empty_dirs(env.claude_dir, MAN)
+            self.assertTrue(os.path.isdir(env.claude_dir))
+
+
 if __name__ == "__main__":
     unittest.main()

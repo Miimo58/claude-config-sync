@@ -108,9 +108,12 @@ def prune_empty_dirs(base_dir: str, man: dict) -> None:
         root = os.path.join(base_dir, entry_path)
         if not os.path.isdir(root):
             continue
-        for current, dirs, files in os.walk(root, topdown=False):
-            if not dirs and not files:
-                try:
+        # os.walk lists a directory's children once, before this pass empties
+        # them, so read the real contents at visit time instead. Bottom-up order
+        # means a parent is checked only after its children are gone.
+        for current, _dirs, _files in os.walk(root, topdown=False):
+            try:
+                if not os.listdir(current):
                     os.rmdir(current)
-                except OSError:
-                    pass
+            except OSError:
+                pass

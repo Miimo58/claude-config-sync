@@ -150,6 +150,7 @@ class Deletions(unittest.TestCase):
         self._write(self.a_claude, "CLAUDE.md", "shared")
         self._write(self.a_claude, "settings.json", json.dumps({}))
         self._write(self.a_claude, "skills/doomed/SKILL.md", "delete me")
+        self._write(self.a_claude, "skills/doomed/scripts/helper.js", "nested")
         sync_engine.cmd_setup(self.remote, self.a_claude, self.a_sync)
         self._write(self.b_claude, "settings.json", json.dumps({}))
         sync_engine.cmd_setup(self.remote, self.b_claude, self.b_sync, reconcile=False)
@@ -175,7 +176,9 @@ class Deletions(unittest.TestCase):
             os.path.join(self.b_claude, "skills/doomed/SKILL.md")),
             "pull must remove a file deleted upstream")
         self.assertFalse(os.path.exists(os.path.join(self.b_claude, "skills/doomed")),
-                         "the emptied directory must go too")
+                         "the emptied directory must go too, nested subdirs included")
+        self.assertFalse(os.path.exists(os.path.join(self.b_claude, "skills")),
+                         "the last skill leaving takes the entry root with it")
 
     def test_deleted_file_is_backed_up_on_B(self):
         self._seed_both()
