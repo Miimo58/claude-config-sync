@@ -20,6 +20,32 @@ Never synced: `sessions/`, `projects/`, `cache/`, `security/`, `backups/`,
 - **Stop** (session end) → `push`: copy your config into the repo, scan for secrets,
   commit and push.
 
+### Deletions
+
+Deleting a file is a change like any other: the next push removes it from the repo, and
+every other machine drops its copy on the next pull (backed up first, and still in the
+repo's git history).
+
+To tell "I deleted this" from "I never had this", each machine keeps
+`~/.claude/sync-snapshot.local.json` — the paths and content hashes that were in sync at
+the end of its last run. It is machine-local and never travels to the repo. Three rules
+follow from it:
+
+- A file missing locally but present in the snapshot was **deleted here** → the push
+  removes it from the repo.
+- A file missing from the repo but present in the snapshot was **deleted elsewhere** →
+  the pull removes it here.
+- A file in neither the snapshot nor one of the trees is **unknown, not deleted** → left
+  alone. This covers a file you just created and have not pushed, and a file another
+  machine added that you have not pulled.
+
+If the local copy no longer matches its snapshot hash, you changed it after the last
+sync: the edit wins over a remote delete and the file goes back up on the next push.
+
+A machine with no snapshot yet deletes nothing and simply records one, so the first run
+after upgrading is always safe. **Upgrade every machine before you rely on this** — a
+machine still on 0.1.x pushes its local copies back up and undoes your deletion.
+
 `settings.json` is merged, not overwritten: `enabledPlugins` and
 `extraKnownMarketplaces` are unioned so every plugin/marketplace known on any machine
 becomes **available everywhere**. A plugin installed on one machine is installed on the

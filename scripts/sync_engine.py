@@ -11,7 +11,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from lib import (config, gitio, manifest, resolve, settingsmerge,  # noqa: E402
-                 backup, secretscan, plugins)
+                 backup, secretscan, plugins, snapshot)
 
 ENGINE_DIR = os.path.dirname(os.path.abspath(__file__))
 PLUGIN_ROOT = os.path.dirname(ENGINE_DIR)
@@ -72,6 +72,58 @@ def _write_repo_settings(claude_dir: str, sync_dir: str) -> bool:
     return True
 
 
+def _record_sync(claude_dir: str, sync_dir: str, man: dict) -> None:
+    """Remember what is in sync now, so the next run can spot a deletion."""
+    snapshot.save(claude_dir, snapshot.build(claude_dir, sync_dir, man))
+
+
+def _delete_from_repo(claude_dir: str, sync_dir: str, man: dict) -> int:
+    """Remove repo files this machine deleted since the last sync.
+
+    Only paths the snapshot vouches for are touched: a repo file this machine
+    never had is unknown, not deleted. Returns the number removed.
+    """
+    known = snapshot.load(claude_dir)
+    removed = 0
+    for rel in snapshot.deleted_since(known, claude_dir):
+        repo_path = os.path.join(sync_dir, rel)
+        if os.path.isfile(repo_path):
+            os.remove(repo_path)
+            removed += 1
+    if removed:
+        snapshot.prune_empty_dirs(sync_dir, man)
+    return removed
+
+
+def _delete_locally(claude_dir: str, sync_dir: str, man: dict, stamp: str) -> int:
+    """Remove local files another machine deleted since the last sync.
+
+    A local file whose content no longer matches the snapshot was changed here
+    after that sync, so the edit wins and the file stays; the next push puts it
+    back in the repo. Every file removed is backed up first. Returns the count.
+    """
+    known = snapshot.load(claude_dir)
+    claude_root = os.path.realpath(claude_dir)
+    removed = 0
+    for rel in snapshot.deleted_since(known, sync_dir):
+        local_path = os.path.realpath(os.path.join(claude_dir, rel))
+        if not local_path.startswith(claude_root + os.sep):
+            continue  # silently skip traversal attempts
+        if not os.path.isfile(local_path):
+            continue
+        try:
+            if snapshot.hash_file(local_path) != known[rel]:
+                continue  # changed here since the last sync: keep it
+        except OSError:
+            continue
+        backup.backup_file(claude_dir, rel, stamp)
+        os.remove(local_path)
+        removed += 1
+    if removed:
+        snapshot.prune_empty_dirs(claude_dir, man)
+    return removed
+
+
 def cmd_setup(remote_url: str, claude_dir: str, sync_dir: str,
               reconcile: bool = True) -> str:
     config.write_local_config(claude_dir, remote_url, sync_dir)
@@ -86,6 +138,7 @@ def cmd_setup(remote_url: str, claude_dir: str, sync_dir: str,
         _write_repo_settings(claude_dir, sync_dir)
         if gitio.commit_all(sync_dir, "sync: seed config from first machine"):
             gitio.push(sync_dir)
+        _record_sync(claude_dir, sync_dir, man)
         return "seeded"
     # Repo already has content: behave like a new machine.
     return cmd_pull(claude_dir, sync_dir, reconcile=reconcile)
@@ -156,7 +209,8 @@ def cmd_pull(claude_dir: str, sync_dir: str, reconcile: bool = True) -> dict:
     man = manifest.load_manifest(sync_dir)
     excludes = man.get("global_excludes", [])
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    summary: dict = {"updated": 0, "kept": 0, "merged_settings": False}
+    summary: dict = {"updated": 0, "kept": 0, "deleted": 0,
+                     "merged_settings": False}
     merged_settings: dict = {}
 
     # Snapshot what this machine already knows BEFORE the merge unions in the
@@ -186,6 +240,9 @@ def cmd_pull(claude_dir: str, sync_dir: str, reconcile: bool = True) -> dict:
                 summary["updated"] += 1
             else:
                 summary["kept"] += 1
+
+    summary["deleted"] = _delete_locally(claude_dir, sync_dir, man, stamp)
+    _record_sync(claude_dir, sync_dir, man)
 
     if reconcile and merged_settings:
         try:
@@ -217,6 +274,7 @@ def cmd_push(claude_dir: str, sync_dir: str) -> dict:
 
     _copy_into_repo(claude_dir, sync_dir, man)
     _write_repo_settings(claude_dir, sync_dir)
+    deleted = _delete_from_repo(claude_dir, sync_dir, man)
 
     findings = secretscan.scan_paths(_staged_manifest_files(sync_dir, man))
     if findings:
@@ -229,9 +287,11 @@ def cmd_push(claude_dir: str, sync_dir: str) -> dict:
         return {"status": "blocked", "findings": findings}
 
     if not gitio.commit_all(sync_dir, "sync: push config update"):
-        return {"status": "nochange"}
+        _record_sync(claude_dir, sync_dir, man)
+        return {"status": "nochange", "deleted": deleted}
     gitio.push(sync_dir)
-    return {"status": "pushed"}
+    _record_sync(claude_dir, sync_dir, man)
+    return {"status": "pushed", "deleted": deleted}
 
 
 def _log(claude_dir: str, message: str) -> None:
